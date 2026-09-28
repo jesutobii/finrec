@@ -11,6 +11,17 @@ export type Transaction = {
   category?: { name: string } | null
 }
 
+type TransactionRow = Omit<Transaction, 'category'> & {
+  category: { name: string }[] | { name: string } | null
+}
+
+function normalizeTransaction(row: TransactionRow): Transaction {
+  return {
+    ...row,
+    category: Array.isArray(row.category) ? row.category[0] ?? null : row.category,
+  }
+}
+
 export async function getTransactions(userId: string) {
   const { data, error } = await supabase
     .from('transactions')
@@ -21,7 +32,7 @@ export async function getTransactions(userId: string) {
     .limit(100)
 
   if (error) throw error
-  return (data ?? []) as Transaction[]
+  return ((data ?? []) as TransactionRow[]).map(normalizeTransaction)
 }
 
 export async function getCategories(type: 'income' | 'expense') {
@@ -51,5 +62,5 @@ export async function createTransaction(input: {
     .single()
 
   if (error) throw error
-  return data as Transaction
+  return normalizeTransaction(data as TransactionRow)
 }
