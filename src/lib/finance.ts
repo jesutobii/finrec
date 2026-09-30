@@ -55,12 +55,19 @@ export async function createTransaction(input: {
   description: string
   category_id: string | null
 }) {
+  // Keep the write separate from the relational read. This makes saving robust even
+  // when PostgREST returns joined relations in an unexpected shape.
   const { data, error } = await supabase
     .from('transactions')
     .insert(input)
-    .select('id,type,amount,currency,transaction_date,description,category_id,category:categories(name)')
+    .select('id,type,amount,currency,transaction_date,description,category_id')
     .single()
 
   if (error) throw error
-  return normalizeTransaction(data as TransactionRow)
+  if (!data) throw new Error('The transaction was not returned after saving.')
+
+  return {
+    ...data,
+    category: null,
+  } as Transaction
 }
