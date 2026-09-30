@@ -1,8 +1,10 @@
 import { supabase } from './supabase'
 
+export type TransactionType = 'income' | 'expense' | 'investment'
+
 export type Transaction = {
   id: string
-  type: 'income' | 'expense'
+  type: TransactionType
   amount: number
   currency: string
   transaction_date: string
@@ -35,7 +37,7 @@ export async function getTransactions(userId: string) {
   return ((data ?? []) as TransactionRow[]).map(normalizeTransaction)
 }
 
-export async function getCategories(type: 'income' | 'expense') {
+export async function getCategories(type: TransactionType) {
   const { data, error } = await supabase
     .from('categories')
     .select('id,name,type')
@@ -48,7 +50,7 @@ export async function getCategories(type: 'income' | 'expense') {
 
 export async function createTransaction(input: {
   user_id: string
-  type: 'income' | 'expense'
+  type: TransactionType
   amount: number
   currency: string
   transaction_date: string
