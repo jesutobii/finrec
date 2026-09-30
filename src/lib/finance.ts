@@ -16,8 +16,13 @@ export type Transaction = {
 }
 
 type TransactionRow = Omit<Transaction, 'category'> & { category: { name: string }[] | { name: string } | null }
+type BudgetRow = Omit<Budget, 'category'> & { category: { name: string }[] | { name: string } | null }
 
 function normalizeTransaction(row: TransactionRow): Transaction {
+  return { ...row, category: Array.isArray(row.category) ? row.category[0] ?? null : row.category }
+}
+
+function normalizeBudget(row: BudgetRow): Budget {
   return { ...row, category: Array.isArray(row.category) ? row.category[0] ?? null : row.category }
 }
 
@@ -48,7 +53,7 @@ export async function deleteTransaction(userId: string, transactionId: string) {
 export async function getBudgets(userId: string, month: string) {
   const { data, error } = await supabase.from('budgets').select('id,category_id,month,amount,currency,category:categories(name)').eq('user_id', userId).eq('month', month)
   if (error) throw error
-  return (data ?? []) as Budget[]
+  return ((data ?? []) as BudgetRow[]).map(normalizeBudget)
 }
 
 export async function saveBudget(input: { user_id: string; category_id: string; month: string; amount: number; currency: string }) {
