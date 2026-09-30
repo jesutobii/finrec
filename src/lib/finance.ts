@@ -21,7 +21,6 @@ type BudgetRow = Omit<Budget, 'category'> & { category: { name: string }[] | { n
 function normalizeTransaction(row: TransactionRow): Transaction {
   return { ...row, category: Array.isArray(row.category) ? row.category[0] ?? null : row.category }
 }
-
 function normalizeBudget(row: BudgetRow): Budget {
   return { ...row, category: Array.isArray(row.category) ? row.category[0] ?? null : row.category }
 }
@@ -45,6 +44,20 @@ export async function createTransaction(input: { user_id: string; type: Transact
   return { ...data, category: null } as Transaction
 }
 
+export async function updateTransaction(userId: string, transactionId: string, input: {
+  type: TransactionType
+  amount: number
+  currency: string
+  transaction_date: string
+  description: string
+  category_id: string | null
+}) {
+  const { data, error } = await supabase.from('transactions').update(input).eq('id', transactionId).eq('user_id', userId).select('id,type,amount,currency,transaction_date,description,category_id,category:categories(name)').single()
+  if (error) throw error
+  if (!data) throw new Error('The transaction was not returned after updating.')
+  return normalizeTransaction(data as TransactionRow)
+}
+
 export async function deleteTransaction(userId: string, transactionId: string) {
   const { error } = await supabase.from('transactions').delete().eq('id', transactionId).eq('user_id', userId)
   if (error) throw error
@@ -57,7 +70,8 @@ export async function getBudgets(userId: string, month: string) {
 }
 
 export async function saveBudget(input: { user_id: string; category_id: string; month: string; amount: number; currency: string }) {
-  const { data, error } = await supabase.from('budgets').upsert(input, { onConflict: 'user_id,category_id,month' }).select('id,category_id,month,amount,currency').single()
+  const { data, error } = await supabase.from('budgets').upsert(input, { onConflict: 'user_id,category_id,month' }).select('id,category_id,month,amount,currency,category:categories(name)').single()
   if (error) throw error
-  return data as Budget
+  if (!data) throw new Error('The budget was not returned after saving.')
+  return normalizeBudget(data as BudgetRow)
 }
