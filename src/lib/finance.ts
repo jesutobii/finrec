@@ -29,7 +29,7 @@ export async function getTransactions(userId: string) {
     .eq('user_id', userId)
     .order('transaction_date', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(100)
+    .limit(500)
 
   if (error) throw error
   return ((data ?? []) as TransactionRow[]).map(normalizeTransaction)
@@ -55,8 +55,6 @@ export async function createTransaction(input: {
   description: string
   category_id: string | null
 }) {
-  // Keep the write separate from the relational read. This makes saving robust even
-  // when PostgREST returns joined relations in an unexpected shape.
   const { data, error } = await supabase
     .from('transactions')
     .insert(input)
@@ -66,8 +64,15 @@ export async function createTransaction(input: {
   if (error) throw error
   if (!data) throw new Error('The transaction was not returned after saving.')
 
-  return {
-    ...data,
-    category: null,
-  } as Transaction
+  return { ...data, category: null } as Transaction
+}
+
+export async function deleteTransaction(userId: string, transactionId: string) {
+  const { error } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('id', transactionId)
+    .eq('user_id', userId)
+
+  if (error) throw error
 }
