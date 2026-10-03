@@ -17,6 +17,13 @@ export type Transaction = {
 
 type TransactionRow = Omit<Transaction, 'category'> & { category: { name: string }[] | { name: string } | null }
 type BudgetRow = Omit<Budget, 'category'> & { category: { name: string }[] | { name: string } | null }
+export type BalanceReconciliation = {
+  id: string
+  month: string
+  opening_balance: number
+  actual_closing_balance: number
+  note: string | null
+}
 
 function normalizeTransaction(row: TransactionRow): Transaction {
   return { ...row, category: Array.isArray(row.category) ? row.category[0] ?? null : row.category }
@@ -74,4 +81,17 @@ export async function saveBudget(input: { user_id: string; category_id: string; 
   if (error) throw error
   if (!data) throw new Error('The budget was not returned after saving.')
   return normalizeBudget(data as BudgetRow)
+}
+
+export async function getReconciliation(userId: string, month: string) {
+  const { data, error } = await supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', userId).eq('month', month).maybeSingle()
+  if (error) throw error
+  return data as BalanceReconciliation | null
+}
+
+export async function saveReconciliation(input: { user_id: string; month: string; opening_balance: number; actual_closing_balance: number; note: string | null }) {
+  const { data, error } = await supabase.from('balance_reconciliations').upsert(input, { onConflict: 'user_id,month' }).select('id,month,opening_balance,actual_closing_balance,note').single()
+  if (error) throw error
+  if (!data) throw new Error('The reconciliation was not returned after saving.')
+  return data as BalanceReconciliation
 }
