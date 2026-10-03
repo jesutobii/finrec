@@ -24,16 +24,17 @@ export function ReconciliationWidget({ session }: { session: Session | null }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!session?.user.id || !open) return
+    const userId = session?.user.id
+    if (!userId || !open) return
     let cancelled = false
     async function load() {
       setError('')
       const start = `${month}-01`
       const endMonth = shiftMonth(month, 1)
       const [{ data: tx, error: txError }, { data: current, error: currentError }, { data: prev, error: prevError }] = await Promise.all([
-        supabase.from('transactions').select('type,amount,transaction_date').eq('user_id', session.user.id).gte('transaction_date', start).lt('transaction_date', `${endMonth}-01`),
-        supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', session.user.id).eq('month', start).maybeSingle(),
-        supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', session.user.id).eq('month', `${shiftMonth(month, -1)}-01`).maybeSingle(),
+        supabase.from('transactions').select('type,amount,transaction_date').eq('user_id', userId).gte('transaction_date', start).lt('transaction_date', `${endMonth}-01`),
+        supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', userId).eq('month', start).maybeSingle(),
+        supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', userId).eq('month', `${shiftMonth(month, -1)}-01`).maybeSingle(),
       ])
       if (cancelled) return
       if (txError || currentError || prevError) { setError((txError || currentError || prevError)?.message || 'Could not load reconciliation data.'); return }
