@@ -51,6 +51,21 @@ export async function createTransaction(input: { user_id: string; type: Transact
   return { ...data, category: null } as Transaction
 }
 
+export async function createFundedExpense(input: { user_id: string; amount: number; currency: string; transaction_date: string; description: string; category_id: string | null; funding_source: 'savings' | 'investment' }) {
+  const { data, error } = await supabase.rpc('create_expense_from_funding', {
+    p_user_id: input.user_id,
+    p_amount: input.amount,
+    p_currency: input.currency,
+    p_transaction_date: input.transaction_date,
+    p_description: input.description,
+    p_category_id: input.category_id,
+    p_funding_source: input.funding_source,
+  })
+  if (error) throw error
+  if (!data?.transaction) throw new Error('The funded expense was not returned after saving.')
+  return { ...data.transaction, category: null } as Transaction
+}
+
 export async function updateTransaction(userId: string, transactionId: string, input: {
   type: TransactionType
   amount: number
