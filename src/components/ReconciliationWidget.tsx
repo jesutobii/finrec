@@ -4,6 +4,7 @@ import { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 type Transaction = { type: 'income' | 'expense' | 'investment'; amount: number; transaction_date: string }
+type Transfer = { amount: number; transfer_date: string }
 type Reconciliation = { id: string; month: string; opening_balance: number; actual_closing_balance: number; note: string | null }
 
 const naira = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 })
@@ -15,6 +16,7 @@ export function ReconciliationWidget({ session }: { session: Session | null }) {
   const [open, setOpen] = useState(false)
   const [month, setMonth] = useState(monthKey())
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [transfers, setTransfers] = useState<Transfer[]>([])
   const [record, setRecord] = useState<Reconciliation | null>(null)
   const [previous, setPrevious] = useState<Reconciliation | null>(null)
   const [opening, setOpening] = useState('')
@@ -31,16 +33,18 @@ export function ReconciliationWidget({ session }: { session: Session | null }) {
       setError('')
       const start = `${month}-01`
       const endMonth = shiftMonth(month, 1)
-      const [{ data: tx, error: txError }, { data: current, error: currentError }, { data: prev, error: prevError }] = await Promise.all([
+      const [{ data: tx, error: txError }, { data: movedBack, error: transferError }, { data: current, error: currentError }, { data: prev, error: prevError }] = await Promise.all([
         supabase.from('transactions').select('type,amount,transaction_date').eq('user_id', userId).gte('transaction_date', start).lt('transaction_date', `${endMonth}-01`),
+        supabase.from('account_transfers').select('amount,transfer_date').eq('user_id', userId).gte('transfer_date', start).lt('transfer_date', `${endMonth}-01`),
         supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', userId).eq('month', start).maybeSingle(),
         supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', userId).eq('month', `${shiftMonth(month, -1)}-01`).maybeSingle(),
       ])
       if (cancelled) return
-      if (txError || currentError || prevError) { setError((txError || currentError || prevError)?.message || 'Could not load reconciliation data.'); return }
+      if (txError || transferError || currentError || prevError) { setError((txError || transferError || currentError || prevError)?.message || 'Could not load reconciliation data.'); return }
       const currentRecord = current as Reconciliation | null
       const previousRecord = prev as Reconciliation | null
       setTransactions((tx ?? []) as Transaction[])
+      setTransfers((movedBack ?? []) as Transfer[])
       setRecord(currentRecord); setPrevious(previousRecord)
       const carriedOpening = currentRecord?.opening_balance ?? previousRecord?.actual_closing_balance
       setOpening(carriedOpening == null ? '' : String(carriedOpening))
@@ -52,8 +56,11 @@ export function ReconciliationWidget({ session }: { session: Session | null }) {
   }, [session?.user.id, open, month])
 
   const totals = useMemo(() => transactions.reduce((a, t) => { const n = Number(t.amount); if (t.type === 'income') a.income += n; else if (t.type === 'expense') a.expenses += n; else a.investments += n; return a }, { income: 0, expenses: 0, investments: 0 }), [transactions])
+  const cashReturned = useMemo(() => transfers.reduce((sum, transfer) => sum + Number(transfer.amount), 0), [transfers])
   const openingValue = Number(opening) || 0
-  const calculated = openingValue + totals.income - totals.expenses - totals.investments
+  // Cash available is spendable cash/bank. Investment contributions reduce it; funded expenses
+  // from savings/investment create a transfer back to cash, so the expense and transfer net out.
+  const calculated = openingValue + totals.income - totals.expenses - totals.investments + cashReturned
   const actualValue = actual === '' ? null : Number(actual)
   const difference = actualValue == null ? null : actualValue - calculated
 
@@ -77,10 +84,30 @@ export function ReconciliationWidget({ session }: { session: Session | null }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', margin: '20px 0 12px' }}><button onClick={() => setMonth(shiftMonth(month, -1))} style={{ border: '1px solid #d9dfdc', background: '#fff', borderRadius: 10, padding: '8px 12px', cursor: 'pointer' }}>← Previous</button><button onClick={() => setMonth(shiftMonth(month, 1))} style={{ border: '1px solid #d9dfdc', background: '#fff', borderRadius: 10, padding: '8px 12px', cursor: 'pointer' }}>Next →</button></div>
         {previous && <div style={{ padding: 12, borderRadius: 12, background: '#eef6f1', marginBottom: 14, fontSize: 14 }}>Brought forward from {monthLabel(shiftMonth(month, -1))}: <strong>{naira.format(previous.actual_closing_balance)}</strong></div>}
         <label style={{ display: 'block', marginTop: 12, fontWeight: 600 }}>Opening / brought-forward balance<input inputMode="decimal" value={opening} onChange={e => setOpening(e.target.value)} placeholder="0" style={{ width: '100%', boxSizing: 'border-box', marginTop: 7, padding: 12, border: '1px solid #d9dfdc', borderRadius: 10, fontSize: 16 }}/></label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, margin: '16px 0' }}>{[['Income', totals.income], ['Expenses', totals.expenses], ['Investments', totals.investments]].map(([label, value]) => <div key={label as string} style={{ background: '#f5f7f6', borderRadius: 12, padding: 12 }}><div style={{ color: '#68756f', fontSize: 12 }}>{label}</div><strong>{naira.format(value as number)}</strong></div>)}</div>
-        <div style={{ padding: 14, borderRadius: 12, background: '#f5f7f6', marginBottom: 12 }}><div style={{ color: '#68756f', fontSize: 13 }}>Calculated closing balance</div><strong style={{ fontSize: 22 }}>{naira.format(calculated)}</strong></div>
-        <label style={{ display: 'block', fontWeight: 600 }}>Actual account balance<input inputMode="decimal" value={actual} onChange={e => setActual(e.target.value)} placeholder="e.g. 211000" style={{ width: '100%', boxSizing: 'border-box', marginTop: 7, padding: 12, border: '1px solid #d9dfdc', borderRadius: 10, fontSize: 16 }}/></label>
-        {difference != null && <div style={{ marginTop: 12, padding: 14, borderRadius: 12, background: difference === 0 ? '#eaf7ee' : '#fff5e8' }}><div style={{ fontSize: 13, color: '#68756f' }}>{difference === 0 ? 'Reconciled' : 'Unreconciled difference'}</div><strong style={{ fontSize: 20 }}>{naira.format(Math.abs(difference))}</strong>{difference !== 0 && <div style={{ marginTop: 5, fontSize: 13 }}>Review missing, duplicated, or incorrectly dated transactions before treating this as a true account balance.</div>}</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, margin: '16px 0' }}>{[['Income', totals.income], ['Expenses', totals.expenses], ['Investments / savings', totals.investments], ['Returned to cash', cashReturned]].map(([label, value]) => <div key={label as string} style={{ background: '#f5f7f6', borderRadius: 12, padding: 12 }}><div style={{ color: '#68756f', fontSize: 12 }}>{label}</div><strong>{naira.format(value as number)}</strong></div>)}</div>
+        <div style={{ marginTop: 16, marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: '#68756f', fontWeight: 700, marginBottom: 8 }}>BALANCE CHECK</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+            <div style={{ background: '#f5f7f6', borderRadius: 12, padding: 14 }}>
+              <div style={{ color: '#68756f', fontSize: 12 }}>FinRec calculated balance</div>
+              <strong style={{ display: 'block', fontSize: 20, marginTop: 3 }}>{naira.format(calculated)}</strong>
+            </div>
+            <div style={{ background: '#eef6f1', borderRadius: 12, padding: 14 }}>
+              <div style={{ color: '#68756f', fontSize: 12 }}>Current available cash</div>
+              <strong style={{ display: 'block', fontSize: 20, marginTop: 3 }}>{actualValue == null ? '—' : naira.format(actualValue)}</strong>
+            </div>
+          </div>
+        </div>
+        <label style={{ display: 'block', fontWeight: 600 }}>Current available balance
+          <div style={{ marginTop: 4, marginBottom: 7, color: '#68756f', fontSize: 13, fontWeight: 400 }}>Enter the amount you actually have available to spend from cash / bank. Savings and investments remain separate funding sources.</div>
+          <input inputMode="decimal" value={actual} onChange={e => setActual(e.target.value)} placeholder="e.g. 182718" style={{ width: '100%', boxSizing: 'border-box', padding: 12, border: '1px solid #d9dfdc', borderRadius: 10, fontSize: 16 }}/>
+        </label>
+        {difference != null && <div style={{ marginTop: 12, padding: 14, borderRadius: 12, background: difference === 0 ? '#eaf7ee' : '#fff5e8' }}>
+          <div style={{ fontSize: 13, color: '#68756f' }}>{difference === 0 ? 'Reconciled' : 'Difference to reconcile'}</div>
+          <strong style={{ display: 'block', fontSize: 20, marginTop: 3 }}>{difference === 0 ? naira.format(0) : naira.format(Math.abs(difference))}</strong>
+          {difference !== 0 && <div style={{ marginTop: 5, fontSize: 13 }}>{difference > 0 ? 'Your actual balance is higher than FinRec by this amount.' : 'Your actual balance is lower than FinRec by this amount.'} Review missing, duplicated, incorrectly dated, or incorrectly funded transactions before treating the difference as an adjustment.</div>}
+          <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700 }}>{difference === 0 ? '✓ Your recorded transactions match the current available balance.' : 'Needs review — this does not create a transaction or change your ledger.'}</div>
+        </div>}
         <label style={{ display: 'block', marginTop: 12, fontWeight: 600 }}>Note<textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Optional reconciliation note" rows={2} style={{ width: '100%', boxSizing: 'border-box', marginTop: 7, padding: 12, border: '1px solid #d9dfdc', borderRadius: 10, fontFamily: 'inherit' }}/></label>
         {error && <div style={{ marginTop: 12, color: '#a33a2b', background: '#fff0ed', padding: 10, borderRadius: 10 }}>{error}</div>}
         <button onClick={save} disabled={saving} style={{ width: '100%', marginTop: 16, padding: 13, border: 0, borderRadius: 10, background: '#123d2b', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{saving ? 'Saving…' : record ? 'Update reconciliation' : 'Save reconciliation'}</button>
