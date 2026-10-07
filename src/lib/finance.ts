@@ -12,6 +12,7 @@ export type Transaction = {
   transaction_date: string
   description: string | null
   category_id: string | null
+  created_at: string
   category?: { name: string } | null
 }
 
@@ -33,7 +34,7 @@ function normalizeBudget(row: BudgetRow): Budget {
 }
 
 export async function getTransactions(userId: string) {
-  const { data, error } = await supabase.from('transactions').select('id,type,amount,currency,transaction_date,description,category_id,category:categories(name)').eq('user_id', userId).order('transaction_date', { ascending: false }).order('created_at', { ascending: false }).limit(500)
+  const { data, error } = await supabase.from('transactions').select('id,type,amount,currency,transaction_date,description,category_id,created_at,category:categories(name)').eq('user_id', userId).order('transaction_date', { ascending: false }).order('created_at', { ascending: false }).limit(500)
   if (error) throw error
   return ((data ?? []) as TransactionRow[]).map(normalizeTransaction)
 }
