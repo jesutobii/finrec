@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 
 type Transaction = { type: 'income' | 'expense' | 'investment'; amount: number; transaction_date: string }
 type Transfer = { amount: number; transfer_date: string }
-type Reconciliation = { id: string; month: string; opening_balance: number; actual_closing_balance: number; note: string | null }
+type Reconciliation = { id: string; month: string; opening_balance: number; actual_closing_balance: number; note: string | null; updated_at: string }
 
 const naira = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 })
 function monthKey(date = new Date()) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` }
@@ -36,7 +36,7 @@ export function ReconciliationWidget({ session }: { session: Session | null }) {
       const [{ data: tx, error: txError }, { data: movedBack, error: transferError }, { data: current, error: currentError }, { data: prev, error: prevError }] = await Promise.all([
         supabase.from('transactions').select('type,amount,transaction_date').eq('user_id', userId).gte('transaction_date', start).lt('transaction_date', `${endMonth}-01`),
         supabase.from('account_transfers').select('amount,transfer_date').eq('user_id', userId).gte('transfer_date', start).lt('transfer_date', `${endMonth}-01`),
-        supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', userId).eq('month', start).maybeSingle(),
+        supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note,updated_at').eq('user_id', userId).eq('month', start).maybeSingle(),
         supabase.from('balance_reconciliations').select('id,month,opening_balance,actual_closing_balance,note').eq('user_id', userId).eq('month', `${shiftMonth(month, -1)}-01`).maybeSingle(),
       ])
       if (cancelled) return
@@ -68,7 +68,7 @@ export function ReconciliationWidget({ session }: { session: Session | null }) {
     if (!session?.user.id || opening === '' || actual === '') { setError('Enter both the opening/brought-forward balance and actual account balance.'); return }
     if (!Number.isFinite(Number(opening)) || !Number.isFinite(Number(actual))) { setError('Enter valid numbers for the balances.'); return }
     setSaving(true); setError('')
-    const { data, error: saveError } = await supabase.from('balance_reconciliations').upsert({ user_id: session.user.id, month: `${month}-01`, opening_balance: Number(opening), actual_closing_balance: Number(actual), note: note.trim() || null }, { onConflict: 'user_id,month' }).select('id,month,opening_balance,actual_closing_balance,note').single()
+    const { data, error: saveError } = await supabase.from('balance_reconciliations').upsert({ user_id: session.user.id, month: `${month}-01`, opening_balance: Number(opening), actual_closing_balance: Number(actual), note: note.trim() || null, updated_at: new Date().toISOString() }, { onConflict: 'user_id,month' }).select('id,month,opening_balance,actual_closing_balance,note').single()
     setSaving(false)
     if (saveError) { setError(saveError.message); return }
     setRecord(data as Reconciliation)

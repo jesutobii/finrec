@@ -71,9 +71,10 @@ export default function App() {
   const [budgetCategory, setBudgetCategory] = useState('')
   const [budgetAmount, setBudgetAmount] = useState('')
   const [planMonth, setPlanMonth] = useState(monthKey())
-  const [currentReconciliation, setCurrentReconciliation] = useState<{ opening_balance: number; actual_closing_balance: number } | null>(null)
+  const [currentReconciliation, setCurrentReconciliation] = useState<{ opening_balance: number; actual_closing_balance: number; updated_at: string } | null>(null)
   const [previousReconciliation, setPreviousReconciliation] = useState<{ actual_closing_balance: number } | null>(null)
   const [cashReturned, setCashReturned] = useState(0)
+  const [postReconciliationNetCash, setPostReconciliationNetCash] = useState(0)
   const importRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -95,16 +96,23 @@ export default function App() {
     const currentMonth = monthKey()
     const previousMonth = shiftMonth(currentMonth, -1)
     Promise.all([
-      supabase.from('balance_reconciliations').select('opening_balance,actual_closing_balance').eq('user_id', userId).eq('month', `${currentMonth}-01`).maybeSingle(),
+      supabase.from('balance_reconciliations').select('opening_balance,actual_closing_balance,updated_at').eq('user_id', userId).eq('month', `${currentMonth}-01`).maybeSingle(),
       supabase.from('balance_reconciliations').select('actual_closing_balance').eq('user_id', userId).eq('month', `${previousMonth}-01`).maybeSingle(),
-      supabase.from('account_transfers').select('amount').eq('user_id', userId).gte('transfer_date', `${currentMonth}-01`).lt('transfer_date', `${shiftMonth(currentMonth, 1)}-01`),
-    ]).then(([current, previous, transfers]) => {
-      if (current.error || previous.error || transfers.error) return
-      setCurrentReconciliation(current.data as { opening_balance: number; actual_closing_balance: number } | null)
+    ]).then(async ([current, previous]) => {
+      if (current.error || previous.error) return
+      const checkpoint = current.data as { opening_balance: number; actual_closing_balance: number; updated_at: string } | null
+      setCurrentReconciliation(checkpoint)
       setPreviousReconciliation(previous.data as { actual_closing_balance: number } | null)
-      setCashReturned((transfers.data ?? []).reduce((sum, row) => sum + Number(row.amount), 0))
-    }).catch(() => {})
-  }, [session?.user.id])
+      if (!checkpoint) { setCashReturned(0); setPostReconciliationNetCash(0); return }
+      const [{ data: laterTx }, { data: laterTransfers }] = await Promise.all([
+        supabase.from('transactions').select('type,amount,created_at').eq('user_id', userId).gt('created_at', checkpoint.updated_at),
+        supabase.from('account_transfers').select('amount,created_at').eq('user_id', userId).gt('created_at', checkpoint.updated_at),
+      ])
+      const txNet = (laterTx ?? []).reduce((sum, row) => sum + (row.type === 'income' ? Number(row.amount) : -Number(row.amount)), 0)
+      const returned = (laterTransfers ?? []).reduce((sum, row) => sum + Number(row.amount), 0)
+      setCashReturned(returned)
+      setPostReconciliationNetCash(txNet + returned)
+    }).catch(() => {})  }, [session?.user.id])
 
   useEffect(() => {
     if (!session?.user.id || !['budgets', 'insights'].includes(page)) return
@@ -149,7 +157,7 @@ export default function App() {
   const savingsRate = monthIncome > 0 ? Math.max(0, (monthIncome - monthExpenses - monthInvestments) / monthIncome * 100) : 0
   const cashOpening = currentReconciliation?.opening_balance ?? previousReconciliation?.actual_closing_balance ?? 0
   const calculatedAvailableCash = cashOpening + monthIncome - monthExpenses - monthInvestments + cashReturned
-  const currentAvailableCash = currentReconciliation?.actual_closing_balance ?? calculatedAvailableCash
+  const currentAvailableCash = currentReconciliation ? currentReconciliation.actual_closing_balance + postReconciliationNetCash : calculatedAvailableCash
   const currentAvailableCashIsReconciled = currentReconciliation !== null
 
   function openNew() { setEditing(null); setType('expense'); setAmount(''); setDescription(''); setCategoryId(''); setFundingSource('cash'); setDate(new Date().toISOString().slice(0, 10)); setError(''); setShowForm(true) }
