@@ -108,13 +108,16 @@ export default function App() {
       setPreviousReconciliation(previous.data as { actual_closing_balance: number } | null)
       if (!checkpoint) { setCashReturned(0); setPostReconciliationNetCash(0); return }
       const [{ data: laterTx }, { data: laterTransfers }] = await Promise.all([
-        supabase.from('transactions').select('type,amount,created_at').eq('user_id', userId).gt('created_at', checkpoint.updated_at),
-        supabase.from('account_transfers').select('amount,created_at').eq('user_id', userId).gt('created_at', checkpoint.updated_at),
+        supabase.from('transactions').select('id,type,amount,created_at').eq('user_id', userId).gt('created_at', checkpoint.updated_at),
+        supabase.from('account_transfers').select('expense_transaction_id,created_at').eq('user_id', userId).gt('created_at', checkpoint.updated_at),
       ])
-      const txNet = (laterTx ?? []).reduce((sum, row) => sum + (row.type === 'income' ? Number(row.amount) : -Number(row.amount)), 0)
-      const returned = (laterTransfers ?? []).reduce((sum, row) => sum + Number(row.amount), 0)
-      setCashReturned(returned)
-      setPostReconciliationNetCash(txNet + returned)
+      const fundedExpenseIds = new Set((laterTransfers ?? []).map(row => row.expense_transaction_id).filter(Boolean))
+      const txNet = (laterTx ?? []).reduce((sum, row) => {
+        if (row.type === 'expense' && fundedExpenseIds.has(row.id)) return sum
+        return sum + (row.type === 'income' ? Number(row.amount) : -Number(row.amount))
+      }, 0)
+      setCashReturned(0)
+      setPostReconciliationNetCash(txNet)
     }).catch(() => {})  }, [session?.user.id])
 
   useEffect(() => {
