@@ -205,8 +205,14 @@ export default function App() {
         // A reconciliation checkpoint already includes transactions created before it.
         // Record only the signed difference when such a transaction is corrected.
         if (currentReconciliation && editing.created_at <= currentReconciliation.updated_at) {
-          const cashContribution = (tx: Pick<Transaction, 'type' | 'amount'>) => tx.type === 'income' ? Number(tx.amount) : -Number(tx.amount)
-          const delta = cashContribution(updated) - cashContribution(editing)
+          const { data: fundingLink, error: fundingError } = await supabase.from('account_transfers').select('id').eq('user_id', session.user.id).eq('expense_transaction_id', editing.id).maybeSingle()
+          if (fundingError) throw fundingError
+          const cashContribution = (tx: Pick<Transaction, 'type' | 'amount'>, fundedExpense: boolean) => {
+            if (tx.type === 'expense' && fundedExpense) return 0
+            return tx.type === 'income' ? Number(tx.amount) : -Number(tx.amount)
+          }
+          const fundedExpense = Boolean(fundingLink)
+          const delta = cashContribution(updated, fundedExpense) - cashContribution(editing, fundedExpense)
           if (delta !== 0) {
             const { error: correctionError } = await supabase.from('transaction_cash_corrections').insert({
               user_id: session.user.id,
