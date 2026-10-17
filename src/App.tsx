@@ -199,6 +199,21 @@ export default function App() {
     try {
       if (editing) {
         const updated = await updateTransaction(session.user.id, editing.id, { type, amount: value, currency: editing.currency || 'NGN', transaction_date: date, description: description.trim(), category_id: categoryId || null })
+        // A reconciliation checkpoint already includes transactions created before it.
+        // Record only the signed difference when such a transaction is corrected.
+        if (currentReconciliation && editing.created_at <= currentReconciliation.updated_at) {
+          const cashContribution = (tx: Pick<Transaction, 'type' | 'amount'>) => tx.type === 'income' ? Number(tx.amount) : -Number(tx.amount)
+          const delta = cashContribution(updated) - cashContribution(editing)
+          if (delta !== 0) {
+            const { error: correctionError } = await supabase.from('transaction_cash_corrections').insert({
+              user_id: session.user.id,
+              transaction_id: editing.id,
+              amount_delta: delta,
+            })
+            if (correctionError) throw correctionError
+            setPostReconciliationNetCash(current => current + delta)
+          }
+        }
         setTransactions(current => current.map(t => t.id === editing.id ? updated : t))
       } else if (type === 'expense') {
         const result = await createFundedExpense({ user_id: session.user.id, amount: value, currency: 'NGN', transaction_date: date, description: description.trim(), category_id: categoryId || null, funding_source: fundingSource })
