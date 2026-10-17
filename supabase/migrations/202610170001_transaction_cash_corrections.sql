@@ -1,0 +1,4 @@
+create table if not exists public.transaction_cash_corrections (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade, transaction_id uuid not null references public.transactions(id) on delete cascade, amount_delta numeric(19,4) not null, created_at timestamptz not null default now());
+alter table public.transaction_cash_corrections enable row level security;
+create policy transaction_cash_corrections_own on public.transaction_cash_corrections for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+grant select, insert on public.transaction_cash_corrections to authenticated;
