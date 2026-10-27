@@ -16,7 +16,7 @@ import { createFundedExpense, FundingSource } from './lib/funding'
 const naira = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 })
 const fallbackCategories: Record<TransactionType, string[]> = {
   income: ['Salary', 'Tutoring', 'Gifts', 'Freelance', 'Other income'],
-  expense: ['Food & groceries', 'Transport', 'Housing', 'Utilities', 'Health', 'Education', 'Entertainment', 'Shopping', 'Subscriptions', 'Tithe', 'Offering', 'Seed', 'Personal Care', 'Household Supplies', 'Kids', 'Hubby', 'Cooperative', 'Pension', 'PAYE', "Kids' education", 'Other expense'],
+  expense: ['Food & groceries', 'Transport', 'Housing', 'Utilities', 'Health', 'Education', 'Entertainment', 'Shopping', 'Subscriptions', 'Tithe', 'Offering', 'Seed', 'Personal Care', 'Household Supplies', 'Internet', 'Kids', 'Hubby', 'Cooperative', 'Pension', 'PAYE', "Kids' education", 'Other expense'],
   investment: ['Investments', 'Savings'],
 }
 type Page = 'dashboard' | 'transactions' | 'budgets' | 'insights' | 'settings'
