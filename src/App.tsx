@@ -78,6 +78,7 @@ export default function App() {
   const [currentReconciliation, setCurrentReconciliation] = useState<{ opening_balance: number; actual_closing_balance: number; updated_at: string } | null>(null)
   const [previousReconciliation, setPreviousReconciliation] = useState<{ actual_closing_balance: number } | null>(null)
   const [cashReturned, setCashReturned] = useState(0)
+  const [investmentFundedExpenseIds, setInvestmentFundedExpenseIds] = useState<Set<string>>(new Set())
   const [postReconciliationNetCash, setPostReconciliationNetCash] = useState(0)
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -89,6 +90,18 @@ export default function App() {
   useEffect(() => {
     if (!session?.user.id) return
     getTransactions(session.user.id).then(setTransactions).catch(e => setError(`Could not load transactions: ${readableError(e, 'Unknown error')}`))
+  }, [session?.user.id])
+
+  useEffect(() => {
+    if (!session?.user.id) return
+    let cancelled = false
+    supabase.from('account_transfers').select('expense_transaction_id').eq('user_id', session.user.id).not('expense_transaction_id', 'is', null)
+      .then(({ data, error: transferError }) => {
+        if (cancelled) return
+        if (transferError) { setError(`Could not load funded expenses: ${readableError(transferError, 'Unknown error')}`); return }
+        setInvestmentFundedExpenseIds(new Set((data ?? []).map(row => row.expense_transaction_id).filter((id): id is string => Boolean(id))))
+      })
+    return () => { cancelled = true }
   }, [session?.user.id])
   useEffect(() => {
     if (!session?.user.id || !showForm) return
@@ -131,6 +144,7 @@ export default function App() {
 
   const income = useMemo(() => sumFor(transactions, 'income'), [transactions])
   const expenses = useMemo(() => sumFor(transactions, 'expense'), [transactions])
+  const cashExpenses = useMemo(() => transactions.filter(t => t.type === 'expense' && !investmentFundedExpenseIds.has(t.id)).reduce((sum, t) => sum + Number(t.amount), 0), [transactions, investmentFundedExpenseIds])
   const investments = useMemo(() => sumFor(transactions, 'investment'), [transactions])
   const currentMonth = monthKey()
   const previousMonth = shiftMonth(currentMonth, -1)
@@ -186,7 +200,8 @@ export default function App() {
   const projectedNextNet = expectedNextIncome - projectedNextExpense
   const savingsRate = monthIncome > 0 ? Math.max(0, (monthIncome - monthExpenses - monthInvestments) / monthIncome * 100) : 0
   const cashOpening = currentReconciliation?.opening_balance ?? previousReconciliation?.actual_closing_balance ?? 0
-  const calculatedAvailableCash = cashOpening + monthIncome - monthExpenses - monthInvestments + cashReturned
+  const monthCashExpenses = transactions.filter(t => t.type === 'expense' && t.transaction_date.startsWith(currentMonth) && !investmentFundedExpenseIds.has(t.id)).reduce((sum, t) => sum + Number(t.amount), 0)
+  const calculatedAvailableCash = cashOpening + monthIncome - monthCashExpenses - monthInvestments + cashReturned
   const currentAvailableCash = currentReconciliation ? currentReconciliation.actual_closing_balance + postReconciliationNetCash : calculatedAvailableCash
   const currentAvailableCashIsReconciled = currentReconciliation !== null
 
