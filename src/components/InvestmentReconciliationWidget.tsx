@@ -66,7 +66,6 @@ export function InvestmentReconciliationWidget({ session }: { session: Session |
     setSaving(false)
     if (saveError) { setError(saveError.message); return }
     setRecord(data as InvestmentReconciliation)
-    setPrevious(data as InvestmentReconciliation)
   }
 
   if (!session) return null
