@@ -144,7 +144,6 @@ export default function App() {
 
   const income = useMemo(() => sumFor(transactions, 'income'), [transactions])
   const expenses = useMemo(() => sumFor(transactions, 'expense'), [transactions])
-  const cashExpenses = useMemo(() => transactions.filter(t => t.type === 'expense' && !investmentFundedExpenseIds.has(t.id)).reduce((sum, t) => sum + Number(t.amount), 0), [transactions, investmentFundedExpenseIds])
   const investments = useMemo(() => sumFor(transactions, 'investment'), [transactions])
   const currentMonth = monthKey()
   const previousMonth = shiftMonth(currentMonth, -1)
