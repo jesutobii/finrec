@@ -34,9 +34,9 @@ export function InvestmentReconciliationWidget({ session }: { session: Session |
       const start = `${month}-01`, next = `${shiftMonth(month, 1)}-01`, previousStart = `${shiftMonth(month, -1)}-01`
       const [tx, monthOut, historyTx, historyOut, current, prev] = await Promise.all([
         supabase.from('transactions').select('amount,transaction_date').eq('user_id', userId).eq('type', 'investment').gte('transaction_date', start).lt('transaction_date', next),
-        supabase.from('account_transfers').select('amount,transfer_date').eq('user_id', userId).eq('from_account', 'investment').gte('transfer_date', start).lt('transfer_date', next),
+        supabase.from('account_transfers').select('amount,transfer_date,transactions!inner(id)').eq('user_id', userId).eq('from_account', 'investment').gte('transfer_date', start).lt('transfer_date', next),
         supabase.from('transactions').select('amount,transaction_date').eq('user_id', userId).eq('type', 'investment').lt('transaction_date', start),
-        supabase.from('account_transfers').select('amount,transfer_date').eq('user_id', userId).eq('from_account', 'investment').lt('transfer_date', start),
+        supabase.from('account_transfers').select('amount,transfer_date,transactions!inner(id)').eq('user_id', userId).eq('from_account', 'investment').lt('transfer_date', start),
         supabase.from('investment_reconciliations').select('id,month,opening_value,actual_closing_value,note').eq('user_id', userId).eq('month', start).maybeSingle(),
         supabase.from('investment_reconciliations').select('id,month,opening_value,actual_closing_value,note').eq('user_id', userId).eq('month', previousStart).maybeSingle(),
       ])
